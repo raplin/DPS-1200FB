@@ -131,7 +131,7 @@ class PowerSupply(object):
     #0x3b - sets yet_more_flags:5, checks write data lsb:5
     #0x3d - something like set min fan speed
     #0x40  (writes 0xe5) 
-    #0x41  (writes 0xd4)   <<d4= fan speed control - 0x4000 = full speed fan (sets 'surprise_mnore_flags:5)')
+    #0x41  (writes 0xd4)   <<d4= fan speed control - write 0x4000 to 0x40 = full speed fan (sets 'surprise_mnore_flags:5)')
     #0x45  sets some voltage threshold if written  (sets a4:1)
     #0x47  sets some other threshhold when written (sets a4:2) -
     #0x49  sets a4:3
@@ -154,7 +154,7 @@ class PowerSupply(object):
         
     def testWrite(self):
         value=0
-        #try fuzzing things to see if we can find power on/off.. (not yet) 0x40 controls fan speed
+        #try fuzzing things to see if we can find power on/off.. (not yet) 0x40 controls fan speed (bitfield)
         #for n in [0x35,0x3b,0x40,0x50,0x52,0x54,0x56]:
         for n in [0x35,0x3b,0x50,0x52,0x54,0x56]:
         #for n in [0x40]:
