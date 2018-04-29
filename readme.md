@@ -43,7 +43,6 @@ c) Hence the "WattsOut" at low power levels (which is just the result of the PSU
 
 d) To test higher power levels you will be wanting some high-power resistors, probably in a bucket of water :-)
 
-
 This info/code (for what it's worth) is released under the MIT license.
 
 

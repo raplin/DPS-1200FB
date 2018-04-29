@@ -69,18 +69,21 @@ d) If you have IDA Pro and would like my IDA database file, email me.
 Cheers, that was fun. 
 DrTune/March 2017
 
+Updated April 2018 to use regular python smbus2 library. Sorry I didn't do that before. ;-)
+
 """
 
 import time
+from  smbus2 import SMBus,i2c_msg  #pip install smbus2
 
-import BananaPiI2CPort  #<<< you won't have this (is a custom class for my hacked kernel) - use SMBus instead! I will do this when I have a sec but it should be easy
-#import smbus  #<<You want to use this - convert the i2c.read and i2c.write to match
+
+
 
 
 class PowerSupply(object):
-    def __init__(self,address):  #address 0..7 reflecting the i2c address select bits on the PSU edge connector
-        self.i2c = BananaPiI2CPort.BananaPiI2CPort()    # 0 = /dev/i2c-0 (port I2C0), 1 = /dev/i2c-1 (port I2C1)
-        self.address=0x58
+    def __init__(self,i2cbus=0,address=7):  #address 0..7 reflecting the i2c address select bits on the PSU edge connector
+        self.i2c = SMBus(i2cbus)    # 0 = /dev/i2c-0 (port I2C0), 1 = /dev/i2c-1 (port I2C1)
+        self.address=0x58+address
         self.EEaddress=0x50+address
 
         self.numReg=0x58/2
@@ -91,10 +94,25 @@ class PowerSupply(object):
 
     #not very interesting - read the 24c02 eeprom (you can write it too)
     def readEEPROM(self):
-        data=self.i2c.read(self.EEaddress,0,255)
-        print data
+        pos=0
+        data=""
+        while pos<256: #fixme
+            data+=self.i2c.read_i2c_block_data(self.EEaddress,pos,32)
+            pos+=32
         print "%s" % (" ".join([ "%02x" % ord(d) for d in data]) )
 
+    def readVar(self,address,writeInts,readCount):
+        #https://github.com/kplindegaard/smbus2  'dual i2c_rdrw'
+        write = i2c_msg.write(address, writeInts)
+        if readCount:
+            read = i2c_msg.read(address,readCount)
+        m=self.i2c.i2c_rdwr(write, read)
+        return [chr(n) for n in list(read)]
+
+    def writeVar(self,address,bytes):
+        asInts=[ord(d) for d in bytes]
+        self.i2c.write_i2c_block_data(address,asInts[0],asInts[1:])
+        
     #the most useful
     def readDPS1200(self,reg,count):
         cs=reg+(self.address<<1)
@@ -103,7 +121,7 @@ class PowerSupply(object):
         writeInts=[reg,regCS]   #send register # plus checksum
         #this should write [address,register,checksum] and then read two bytes (send address+read bit, read lsb,read msb)
         #note this device doesn't require you to use a "repeated start" I2C condition - you can just do start/write/stop;start/read/stop
-        return self.i2c.readVar(self.address,writeInts,count)
+        return self.readVar(self.address,writeInts,count)
     
     #  Writable registers/cmds:
     # Nothing very interesting discovered so far; you can control the fan speed. Not yet discovered how to turn 
@@ -150,7 +168,7 @@ class PowerSupply(object):
         #the checksum is the 'secret sauce'
         writeInts=[reg,valLSB,valMSB,regCS]  #write these 4 bytes to i2c
         bytes="".join([chr(n) for n in writeInts])
-        return self.i2c.writeVar(self.address, bytes)  #<<Fix to work with smbus
+        return self.writeVar(self.address, bytes) 
         
     def testWrite(self):
         value=0
@@ -187,9 +205,11 @@ class PowerSupply(object):
         (0x36>>1):["PEAK_AMPS_OUT",128.0],
         (0x3A>>1):["COOL_FLAGS1",0],             #unknown (from disassembly)
         (0x3c>>1):["COOL_FLAGS2",0],             #unknown (from disassembly)
-        (0x40>>1):["FAN_SOMETHING",1],          #unknown (from disassembly)
+        (0x40>>1):["FAN_TARGET_RPM",1],          #unknown (from disassembly)
         (0x44>>1):["VOLTAGE_THRESHOLD_1",1],    #unknown (from disassembly)
         (0x46>>1):["VOLTAGE_THRESHOLD_2",1],    #unknown (from disassembly)
+        (0x50>>1):["MAYBE_UNDERVOLTAGE_THRESH",32.0],    #unknown (from disassembly)
+        (0x52>>1):["MAYBE_OVERVOLTAGE_THRESH",32.0],    #unknown (from disassembly)
         #reading 0x57 reads internal EEPROM space in CPU (just logging info, e.g. hours in use)
         }
 
@@ -231,15 +251,24 @@ class PowerSupply(object):
         return
         addr=self.address
 
+    def forceFanRPM(self,rpm):
+        #sets (forces) fan speed; lowest it will accept is 3300rpm
+        #conversly, 16000RPM is very, very fast indeed. 
+        #You probably (untested) have to keep writing this regularly if you want to override what the firmware wants to do based
+        #on its temp sensors
+        self.writeDPS1200(0x40,rpm)
+        
+        
         
 
-ps=PowerSupply(0)
+ps=PowerSupply(i2cbus=0,address=7)
+#ps.readEEPROM() #borked right now
 
 while True:
     print "\033c" #clear screen
     ps.read()
     time.sleep(0.1)
-    #ps.testWrite()
-#ps.write()
+
+    ps.forceFanRPM(3200) #test - don't do this unless you really want to override the fan for some reason
 
 
